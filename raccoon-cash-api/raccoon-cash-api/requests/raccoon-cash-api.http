@@ -1,0 +1,245 @@
+@baseUrl = http://localhost:8080/api
+@cashAccountId = 1
+@bankAccountId = 2
+@incomeCategoryId = 9
+@expenseCategoryId = 1
+@budgetId = 1
+@budgetCategoryLimitId = 1
+@transactionId = 1
+@debtId = 1
+
+### Accounts - Crear cuenta efectivo
+POST {{baseUrl}}/accounts
+Content-Type: application/json
+
+{
+  "name": "Efectivo",
+  "type": "CASH",
+  "initialBalance": 5000,
+  "currency": "C$",
+  "color": "#4CAF50"
+}
+
+### Accounts - Crear cuenta banco
+POST {{baseUrl}}/accounts
+Content-Type: application/json
+
+{
+  "name": "Banco",
+  "type": "BANK",
+  "initialBalance": 10000,
+  "currency": "C$",
+  "color": "#2196F3"
+}
+
+### Accounts - Listar cuentas
+GET {{baseUrl}}/accounts
+
+### Accounts - Actualizar cuenta
+PUT {{baseUrl}}/accounts/{{cashAccountId}}
+Content-Type: application/json
+
+{
+  "name": "Efectivo Principal",
+  "type": "CASH",
+  "initialBalance": 5000,
+  "currency": "C$",
+  "color": "#4CAF50"
+}
+
+### Accounts - Eliminar cuenta logicamente
+DELETE {{baseUrl}}/accounts/{{cashAccountId}}
+
+### Categories - Crear categoria de gasto
+POST {{baseUrl}}/categories
+Content-Type: application/json
+
+{
+  "name": "Cafe",
+  "type": "EXPENSE",
+  "color": "#795548",
+  "icon": "coffee"
+}
+
+### Categories - Crear categoria de ingreso
+POST {{baseUrl}}/categories
+Content-Type: application/json
+
+{
+  "name": "Freelance",
+  "type": "INCOME",
+  "color": "#00BCD4",
+  "icon": "work"
+}
+
+### Categories - Listar categorias
+GET {{baseUrl}}/categories
+
+### Categories - Filtrar ingresos
+GET {{baseUrl}}/categories?type=INCOME
+
+### Categories - Filtrar gastos
+GET {{baseUrl}}/categories?type=EXPENSE
+
+### Transactions - Crear ingreso
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "description": "Pago salario",
+  "amount": 12000,
+  "type": "INCOME",
+  "date": "2026-06-03T10:00:00",
+  "accountId": {{cashAccountId}},
+  "categoryId": {{incomeCategoryId}},
+  "notes": "Ingreso mensual"
+}
+
+### Transactions - Crear gasto
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "description": "Supermercado",
+  "amount": 800,
+  "type": "EXPENSE",
+  "date": "2026-06-03T12:00:00",
+  "accountId": {{cashAccountId}},
+  "categoryId": {{expenseCategoryId}},
+  "notes": "Compra semanal"
+}
+
+### Transactions - Crear transferencia
+POST {{baseUrl}}/transactions
+Content-Type: application/json
+
+{
+  "description": "Mover dinero al banco",
+  "amount": 1000,
+  "type": "TRANSFER",
+  "date": "2026-06-03T14:00:00",
+  "accountId": {{cashAccountId}},
+  "destinationAccountId": {{bankAccountId}},
+  "notes": "Ahorro"
+}
+
+### Transactions - Editar transaccion
+PUT {{baseUrl}}/transactions/{{transactionId}}
+Content-Type: application/json
+
+{
+  "description": "Supermercado actualizado",
+  "amount": 900,
+  "type": "EXPENSE",
+  "date": "2026-06-03T12:00:00",
+  "accountId": {{cashAccountId}},
+  "categoryId": {{expenseCategoryId}},
+  "notes": "Monto corregido"
+}
+
+### Transactions - Eliminar transaccion
+DELETE {{baseUrl}}/transactions/{{transactionId}}
+
+### Transactions - Listar todas
+GET {{baseUrl}}/transactions
+
+### Transactions - Filtrar por cuenta
+GET {{baseUrl}}/transactions?accountId={{cashAccountId}}
+
+### Transactions - Filtrar por categoria
+GET {{baseUrl}}/transactions?categoryId={{expenseCategoryId}}
+
+### Transactions - Filtrar por tipo
+GET {{baseUrl}}/transactions?type=EXPENSE
+
+### Transactions - Filtrar por rango
+GET {{baseUrl}}/transactions?from=2026-06-01&to=2026-06-30
+
+### Transactions - Filtro combinado
+GET {{baseUrl}}/transactions?accountId={{cashAccountId}}&type=EXPENSE&from=2026-06-01&to=2026-06-30
+
+### Budgets - Crear presupuesto
+POST {{baseUrl}}/budgets
+Content-Type: application/json
+
+{
+  "name": "Presupuesto mensual",
+  "amountLimit": 10000,
+  "periodType": "MONTHLY",
+  "startDate": "2026-06-01",
+  "endDate": "2026-06-30"
+}
+
+### Budgets - Listar presupuestos
+GET {{baseUrl}}/budgets
+
+### Budgets - Obtener resumen
+GET {{baseUrl}}/budgets/{{budgetId}}/summary
+
+### Budgets - Agregar limite por categoria
+POST {{baseUrl}}/budgets/{{budgetId}}/categories
+Content-Type: application/json
+
+{
+  "categoryId": {{expenseCategoryId}},
+  "amountLimit": 4000
+}
+
+### Budgets - Listar limites por categoria
+GET {{baseUrl}}/budgets/{{budgetId}}/categories
+
+### Budgets - Actualizar limite por categoria
+PUT {{baseUrl}}/budgets/{{budgetId}}/categories/{{budgetCategoryLimitId}}
+Content-Type: application/json
+
+{
+  "categoryId": {{expenseCategoryId}},
+  "amountLimit": 4500
+}
+
+### Budgets - Eliminar limite por categoria
+DELETE {{baseUrl}}/budgets/{{budgetId}}/categories/{{budgetCategoryLimitId}}
+
+### Debts - Crear deuda que debo
+POST {{baseUrl}}/debts
+Content-Type: application/json
+
+{
+  "personName": "Carlos",
+  "description": "Prestamo personal",
+  "totalAmount": 3000,
+  "type": "I_OWE",
+  "dueDate": "2026-07-01",
+  "accountId": {{cashAccountId}}
+}
+
+### Debts - Registrar pago parcial
+POST {{baseUrl}}/debts/{{debtId}}/payments
+Content-Type: application/json
+
+{
+  "amount": 1000,
+  "paymentDate": "2026-06-10",
+  "notes": "Primer pago"
+}
+
+### Debts - Listar deudas
+GET {{baseUrl}}/debts
+
+### Debts - Listar pagos
+GET {{baseUrl}}/debts/{{debtId}}/payments
+
+### Dashboard - Resumen
+GET {{baseUrl}}/dashboard/summary
+
+### Reports - Mensual
+GET {{baseUrl}}/reports/monthly?year=2026&month=6
+
+### Reports - Por categoria
+GET {{baseUrl}}/reports/by-category?from=2026-06-01&to=2026-06-30
+
+### Reports - Por cuenta
+GET {{baseUrl}}/reports/by-account?from=2026-06-01&to=2026-06-30
+
+### Reports - Flujo de caja
+GET {{baseUrl}}/reports/cash-flow?from=2026-06-01&to=2026-06-30
