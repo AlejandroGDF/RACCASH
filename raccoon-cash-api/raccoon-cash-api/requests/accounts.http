@@ -1,0 +1,32 @@
+﻿### Crear cuenta
+POST http://localhost:8080/api/accounts
+Content-Type: application/json
+
+{
+  "name": "Efectivo",
+  "type": "CASH",
+  "initialBalance": 0,
+  "currency": "C$",
+  "color": "#4CAF50"
+}
+
+### Listar cuentas
+GET http://localhost:8080/api/accounts
+
+### Buscar cuenta por id
+GET http://localhost:8080/api/accounts/1
+
+### Actualizar cuenta
+PUT http://localhost:8080/api/accounts/1
+Content-Type: application/json
+
+{
+  "name": "Efectivo Actualizado",
+  "type": "CASH",
+  "initialBalance": 100,
+  "currency": "C$",
+  "color": "#4CAF50"
+}
+
+### Eliminar cuenta logicamente
+DELETE http://localhost:8080/api/accounts/1
