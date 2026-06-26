@@ -4,27 +4,33 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ni.edu.uam.raccooncash.data.model.AccountResponse
+import ni.edu.uam.raccooncash.data.model.CategoryResponse
 import ni.edu.uam.raccooncash.data.model.DebtResponse
 import ni.edu.uam.raccooncash.data.model.PresupuestoRespuesta
 import ni.edu.uam.raccooncash.data.model.TipoPeriodoPresupuesto
@@ -35,6 +41,8 @@ import ni.edu.uam.raccooncash.ui.account_details.AccountDetailsScreen
 import ni.edu.uam.raccooncash.ui.accounts.AccountsScreen
 import ni.edu.uam.raccooncash.ui.accounts.AccountsViewModel
 import ni.edu.uam.raccooncash.ui.accounts.AddAccountScreen
+import ni.edu.uam.raccooncash.ui.accounts.getAccountVisual
+import ni.edu.uam.raccooncash.ui.accounts.getEmojiForCategory
 import ni.edu.uam.raccooncash.ui.budgets.AddBudgetScreen
 import ni.edu.uam.raccooncash.ui.budgets.BudgetDetailsScreen
 import ni.edu.uam.raccooncash.ui.budgets.BudgetsScreen
@@ -462,6 +470,21 @@ private fun calculateBudgetEndDate(startDate: LocalDate, periodType: TipoPeriodo
     }.minusDays(1)
 }
 
+private object TransactionsPalette {
+    val Background = Color(0xFF080B14)
+    val BackgroundAlt = Color(0xFF0B1020)
+    val Card = Color(0xFF171C2A)
+    val ElevatedCard = Color(0xFF202638)
+    val Border = Color.White.copy(alpha = 0.08f)
+    val Lavender = Color(0xFFA78BFA)
+    val LavenderDeep = Color(0xFF31254B)
+    val Mint = Color(0xFF7EDC8D)
+    val Sky = Color(0xFF74C7EC)
+    val Coral = Color(0xFFFF7A85)
+    val TextPrimary = Color.White
+    val TextSecondary = Color(0xFF9CA3AF)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsTabScreen(
@@ -472,16 +495,21 @@ fun TransactionsTabScreen(
     val transactions by viewModel.transactions.collectAsState()
     val allCategories by viewModel.categories.collectAsState()
     val allAccounts by viewModel.accounts.collectAsState()
-    
+
+    val today = LocalDate.now()
     val months = listOf("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
-    var selectedMonthIndex by remember { mutableIntStateOf(java.time.LocalDate.now().monthValue - 1) }
+    val currentMonthIndex = today.monthValue - 1
+    val visibleMonthIndices = remember(currentMonthIndex) {
+        (-2..2).map { offset -> (currentMonthIndex + offset + months.size) % months.size }
+    }
+    var selectedMonthIndex by remember { mutableIntStateOf(currentMonthIndex) }
     var filterState by remember { mutableStateOf(TransactionFilterState()) }
     var sortOption by remember { mutableStateOf(TransactionSortOption.DATE_DESC) }
     var showFilterSheet by remember { mutableStateOf(false) }
 
     val monthTransactions = transactions.filter { transaction ->
         val date = parseTransactionDate(transaction)
-        date?.monthValue == selectedMonthIndex + 1 && date.year == LocalDate.now().year
+        date?.monthValue == selectedMonthIndex + 1 && date.year == today.year
     }
 
     val filteredTransactions = monthTransactions.filter { transaction ->
@@ -490,6 +518,7 @@ fun TransactionsTabScreen(
 
     val totalIncome = filteredTransactions.filter { it.type == "INCOME" }.sumOf { it.amount }
     val totalExpense = filteredTransactions.filter { it.type == "EXPENSE" }.sumOf { it.amount }
+    val total = totalIncome - totalExpense
 
     if (showFilterSheet) {
         TransactionFilterSheet(
@@ -501,6 +530,7 @@ fun TransactionsTabScreen(
     }
 
     Scaffold(
+        containerColor = TransactionsPalette.Background,
         floatingActionButton = {
             RaccAddFloatingActionButton(
                 onClick = onAddTransactionClick,
@@ -508,110 +538,70 @@ fun TransactionsTabScreen(
             )
         }
     ) { paddingValues ->
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0F111A))
-            .padding(paddingValues)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            TransactionsPalette.Background,
+                            TransactionsPalette.BackgroundAlt,
+                            TransactionsPalette.Background
+                        )
+                    )
+                )
+                .padding(paddingValues),
+            contentPadding = PaddingValues(bottom = 28.dp)
         ) {
-            Text(
-                "Transacciones",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
-            TransactionToolsMenu(
-                activeFilterCount = filterState.activeCount,
-                sortOption = sortOption,
-                onFilterClick = { showFilterSheet = true },
-                onSortSelected = { sortOption = it }
-            )
-        }
-
-        ScrollableTabRow(
-            selectedTabIndex = selectedMonthIndex,
-            containerColor = Color.Transparent,
-            contentColor = Color.White,
-            edgePadding = 16.dp,
-            divider = {},
-            indicator = { tabPositions ->
-                TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedMonthIndex]),
-                    color = Color.White
+            item {
+                TransactionsHeader(
+                    activeFilterCount = filterState.activeCount,
+                    sortOption = sortOption,
+                    onFilterClick = { showFilterSheet = true },
+                    onSortSelected = { sortOption = it }
                 )
             }
-        ) {
-            months.forEachIndexed { index, month ->
-                Tab(
-                    selected = selectedMonthIndex == index,
-                    onClick = { selectedMonthIndex = index },
-                    text = { Text(month, color = if (selectedMonthIndex == index) Color.White else Color.Gray) }
+
+            item {
+                TransactionsMonthSelector(
+                    months = months,
+                    visibleMonthIndices = visibleMonthIndices,
+                    selectedMonthIndex = selectedMonthIndex,
+                    onMonthSelected = { selectedMonthIndex = it }
                 )
             }
-        }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color(0xFF1E222D), RoundedCornerShape(12.dp)).padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Gastos", color = Color.Gray, fontSize = 12.sp)
-                Text("C$${String.format(Locale.getDefault(), "%.2f", totalExpense)}", color = Color(0xFFEF9A9A), fontWeight = FontWeight.Bold)
+            item {
+                MonthlySummaryCard(
+                    totalExpense = totalExpense,
+                    totalIncome = totalIncome,
+                    total = total
+                )
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Ingresos", color = Color.Gray, fontSize = 12.sp)
-                Text("C$${String.format(Locale.getDefault(), "%.2f", totalIncome)}", color = Color(0xFFA5D6A7), fontWeight = FontWeight.Bold)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Total", color = Color.Gray, fontSize = 12.sp)
-                val total = totalIncome - totalExpense
-                Text("C$${String.format(Locale.getDefault(), "%.2f", total)}", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        }
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
             val groupedByDay = buildTransactionGroups(filteredTransactions, sortOption)
 
             if (filteredTransactions.isEmpty()) {
                 item {
-                    Text(
-                        text = if (filterState.hasActiveFilters) "No hay transacciones con esos filtros." else "No hay transacciones en este mes.",
-                        color = Color.Gray,
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    EmptyTransactionsState(
+                        message = if (filterState.hasActiveFilters) {
+                            "No hay transacciones con esos filtros."
+                        } else {
+                            "No hay transacciones en este mes."
+                        }
                     )
                 }
             }
 
             groupedByDay.forEach { (date, dailyTrans) ->
                 item {
-                    val dateLabel = when (date) {
-                        java.time.LocalDate.now() -> "Hoy, ${date.format(java.time.format.DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.forLanguageTag("es")))}"
-                        java.time.LocalDate.now().minusDays(1) -> "Ayer, ${date.format(java.time.format.DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.forLanguageTag("es")))}"
-                        else -> date.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale.forLanguageTag("es")))
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(dateLabel.replaceFirstChar { it.uppercase(Locale.getDefault()) }, color = Color.Gray, fontSize = 14.sp)
-                        val daySum = dailyTrans.sumOf {
-                            when (it.type) {
-                                "INCOME" -> it.amount
-                                "EXPENSE" -> -it.amount
-                                else -> 0.0
-                            }
-                        }
-                        Text("C$${String.format(Locale.getDefault(), "%.2f", daySum)}", color = Color.Gray, fontSize = 14.sp)
-                    }
+                    TransactionDateHeader(
+                        date = date,
+                        dailyTransactions = dailyTrans
+                    )
                 }
                 items(dailyTrans) { transaction ->
-                    ni.edu.uam.raccooncash.ui.accounts.TransactionItem(
+                    PremiumTransactionItem(
                         transaction = transaction,
                         allCategories = allCategories,
                         allAccounts = allAccounts,
@@ -621,5 +611,507 @@ fun TransactionsTabScreen(
             }
         }
     }
+}
+
+@Composable
+private fun TransactionsHeader(
+    activeFilterCount: Int,
+    sortOption: TransactionSortOption,
+    onFilterClick: () -> Unit,
+    onSortSelected: (TransactionSortOption) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(top = 20.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "Transacciones",
+                color = TransactionsPalette.TextPrimary,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "Movimientos y filtros del mes",
+                color = TransactionsPalette.TextSecondary,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        TransactionToolsMenu(
+            activeFilterCount = activeFilterCount,
+            sortOption = sortOption,
+            onFilterClick = onFilterClick,
+            onSortSelected = onSortSelected
+        )
+    }
+}
+
+@Composable
+private fun TransactionsMonthSelector(
+    months: List<String>,
+    visibleMonthIndices: List<Int>,
+    selectedMonthIndex: Int,
+    onMonthSelected: (Int) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(visibleMonthIndices) { monthIndex ->
+            MonthPill(
+                text = months[monthIndex],
+                selected = selectedMonthIndex == monthIndex,
+                onClick = { onMonthSelected(monthIndex) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthPill(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(999.dp),
+            color = if (selected) TransactionsPalette.LavenderDeep else TransactionsPalette.Card.copy(alpha = 0.72f),
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (selected) TransactionsPalette.Lavender.copy(alpha = 0.64f) else TransactionsPalette.Border
+            )
+        ) {
+            Text(
+                text = text,
+                color = if (selected) TransactionsPalette.TextPrimary else TransactionsPalette.TextSecondary,
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(5.dp))
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .width(28.dp)
+                    .height(3.dp)
+                    .background(TransactionsPalette.Lavender, RoundedCornerShape(999.dp))
+            )
+        } else {
+            Spacer(modifier = Modifier.height(3.dp))
+        }
+    }
+}
+
+@Composable
+private fun MonthlySummaryCard(
+    totalExpense: Double,
+    totalIncome: Double,
+    total: Double
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        colors = CardDefaults.cardColors(containerColor = TransactionsPalette.Card),
+        shape = RoundedCornerShape(30.dp),
+        border = BorderStroke(1.dp, TransactionsPalette.Lavender.copy(alpha = 0.18f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            TransactionsPalette.ElevatedCard,
+                            TransactionsPalette.Card,
+                            TransactionsPalette.LavenderDeep.copy(alpha = 0.32f)
+                        )
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SummaryMetric(
+                label = "Gastos",
+                amount = formatTransactionsCurrency(totalExpense),
+                color = TransactionsPalette.Coral
+            )
+            SummaryDivider()
+            SummaryMetric(
+                label = "Ingresos",
+                amount = formatTransactionsCurrency(totalIncome),
+                color = TransactionsPalette.Mint
+            )
+            SummaryDivider()
+            SummaryMetric(
+                label = "Total",
+                amount = formatTransactionsCurrency(total),
+                color = TransactionsPalette.Lavender
+            )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.SummaryMetric(
+    label: String,
+    amount: String,
+    color: Color
+) {
+    Column(
+        modifier = Modifier.weight(1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = label,
+            color = TransactionsPalette.TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = amount,
+            color = color,
+            fontSize = if (amount.length > 12) 13.sp else 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SummaryDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(46.dp)
+            .background(TransactionsPalette.Border, RoundedCornerShape(999.dp))
+    )
+}
+
+@Composable
+private fun TransactionDateHeader(
+    date: LocalDate,
+    dailyTransactions: List<TransactionResponse>
+) {
+    val daySum = dailyTransactions.sumOf {
+        when (it.type) {
+            "INCOME" -> it.amount
+            "EXPENSE" -> -it.amount
+            else -> 0.0
+        }
+    }
+    val subtotalColor = when {
+        daySum > 0.0 -> TransactionsPalette.Mint
+        daySum < 0.0 -> TransactionsPalette.Coral
+        else -> TransactionsPalette.TextSecondary
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = formatTransactionsDateLabel(date),
+            color = TransactionsPalette.TextSecondary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = formatTransactionsCurrency(daySum, showPositiveSign = true),
+            color = subtotalColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier
+                .background(TransactionsPalette.ElevatedCard.copy(alpha = 0.84f), RoundedCornerShape(999.dp))
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        )
+    }
+}
+
+@Composable
+private fun PremiumTransactionItem(
+    transaction: TransactionResponse,
+    allCategories: List<CategoryResponse>,
+    allAccounts: List<AccountResponse>,
+    onClick: () -> Unit
+) {
+    val isSaving = transaction.description.startsWith("Ahorro para", ignoreCase = true)
+    val isExpense = transaction.type == "EXPENSE"
+    val isTransfer = transaction.type == "TRANSFER" || isSaving
+    val amountColor = when {
+        isExpense -> TransactionsPalette.Coral
+        isSaving -> TransactionsPalette.Lavender
+        isTransfer -> TransactionsPalette.Sky
+        else -> TransactionsPalette.Mint
+    }
+    val amountText = when {
+        isExpense -> formatTransactionsCurrency(-transaction.amount)
+        isTransfer -> formatTransactionsCurrency(transaction.amount)
+        else -> formatTransactionsCurrency(transaction.amount, showPositiveSign = true)
+    }
+    val category = transaction.category ?: allCategories.find { it.id == transaction.categoryId }
+    val parentCategory = if (category?.parentCategoryId != null && category.parentCategoryId != 0L) {
+        allCategories.find { it.id == category.parentCategoryId }
+    } else {
+        null
+    }
+    val categoryEmoji = when {
+        parentCategory != null -> getEmojiForCategory(parentCategory.name, parentCategory.icon)
+        category != null -> getEmojiForCategory(transaction.categoryName ?: category.name, category.icon)
+        !transaction.categoryName.isNullOrBlank() -> getEmojiForCategory(transaction.categoryName, null)
+        else -> null
+    }
+    val account = transaction.account ?: allAccounts.find { it.id == transaction.accountId }
+    val accountName = transaction.accountName ?: account?.name ?: "Cuenta desconocida"
+    val accountColor = parseTransactionAccountColor(transaction.account?.color ?: account?.color)
+        ?: getAccountVisual(accountName).color
+    val destinationId = transaction.toAccountId ?: transaction.destinationAccountId
+    val destinationName = transaction.destinationAccountName
+        ?: transaction.toAccountName
+        ?: transaction.toAccount?.name
+        ?: allAccounts.find { it.id == destinationId }?.name
+    val title = transaction.description.ifBlank { transaction.categoryName ?: "Movimiento" }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = TransactionsPalette.Card),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, TransactionsPalette.Border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            TransactionsPalette.ElevatedCard.copy(alpha = 0.72f),
+                            TransactionsPalette.Card
+                        )
+                    )
+                )
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(amountColor.copy(alpha = 0.15f), RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (categoryEmoji != null) {
+                    Text(text = categoryEmoji, fontSize = 24.sp)
+                } else {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.List,
+                        contentDescription = null,
+                        tint = amountColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = TransactionsPalette.TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TransactionAccountChip(
+                        accountName = accountName,
+                        accountColor = accountColor,
+                        modifier = Modifier.widthIn(max = 168.dp)
+                    )
+                    if (isTransfer && !destinationName.isNullOrBlank()) {
+                        Text(
+                            text = "→ $destinationName",
+                            color = TransactionsPalette.TextSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Text(
+                text = amountText,
+                color = amountColor,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = if (amountText.length > 13) 13.sp else 15.sp,
+                maxLines = 1,
+                softWrap = false
+            )
+
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = TransactionsPalette.TextSecondary.copy(alpha = 0.62f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TransactionAccountChip(
+    accountName: String,
+    accountColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(999.dp),
+        color = TransactionsPalette.ElevatedCard.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, accountColor.copy(alpha = 0.34f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(accountColor, RoundedCornerShape(999.dp))
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = accountName,
+                color = TransactionsPalette.TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyTransactionsState(message: String) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = TransactionsPalette.Card),
+        shape = RoundedCornerShape(26.dp),
+        border = BorderStroke(1.dp, TransactionsPalette.Border)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(TransactionsPalette.Lavender.copy(alpha = 0.14f), RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.List,
+                    contentDescription = null,
+                    tint = TransactionsPalette.Lavender,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Text(
+                text = message,
+                color = TransactionsPalette.TextSecondary,
+                fontSize = 14.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}
+
+private fun formatTransactionsDateLabel(date: LocalDate): String {
+    val shortFormatter = DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.forLanguageTag("es"))
+    val fullFormatter = DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale.forLanguageTag("es"))
+    val today = LocalDate.now()
+    val label = when (date) {
+        today -> "Hoy, ${date.format(shortFormatter)}"
+        today.minusDays(1) -> "Ayer, ${date.format(shortFormatter)}"
+        else -> date.format(fullFormatter)
+    }
+
+    return label.replaceFirstChar { it.uppercase(Locale.getDefault()) }
+}
+
+private fun formatTransactionsCurrency(
+    amount: Double,
+    showPositiveSign: Boolean = false
+): String {
+    val sign = when {
+        amount < 0.0 -> "-"
+        showPositiveSign && amount > 0.0 -> "+"
+        else -> ""
+    }
+    val normalizedAmount = if (amount < 0.0) -amount else amount
+
+    return "${sign}C$${String.format(Locale.getDefault(), "%.2f", normalizedAmount)}"
+}
+
+private fun parseTransactionAccountColor(color: String?): Color? {
+    val rawColor = color?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val normalizedColor = if (rawColor.startsWith("#")) rawColor else "#$rawColor"
+
+    return try {
+        Color(android.graphics.Color.parseColor(normalizedColor))
+    } catch (e: IllegalArgumentException) {
+        null
     }
 }

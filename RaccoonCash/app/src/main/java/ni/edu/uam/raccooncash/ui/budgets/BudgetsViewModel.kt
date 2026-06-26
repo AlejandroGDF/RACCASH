@@ -22,6 +22,9 @@ class BudgetsViewModel : ViewModel() {
     private val _currentBudgetCategoryLimits = MutableStateFlow<List<BudgetCategoryLimitResponse>>(emptyList())
     val currentBudgetCategoryLimits: StateFlow<List<BudgetCategoryLimitResponse>> = _currentBudgetCategoryLimits.asStateFlow()
 
+    private val _budgetCategoryLimitsByBudgetId = MutableStateFlow<Map<Long, List<BudgetCategoryLimitResponse>>>(emptyMap())
+    val budgetCategoryLimitsByBudgetId: StateFlow<Map<Long, List<BudgetCategoryLimitResponse>>> = _budgetCategoryLimitsByBudgetId.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -51,11 +54,34 @@ class BudgetsViewModel : ViewModel() {
     fun loadBudgetCategoryLimits(budgetId: Long) {
         viewModelScope.launch {
             try {
-                _currentBudgetCategoryLimits.value = repository.getBudgetCategoryLimits(budgetId)
+                val limits = repository.getBudgetCategoryLimits(budgetId)
+                _currentBudgetCategoryLimits.value = limits
+                _budgetCategoryLimitsByBudgetId.value = _budgetCategoryLimitsByBudgetId.value + (budgetId to limits)
             } catch (e: Exception) {
                 _currentBudgetCategoryLimits.value = emptyList()
                 _error.value = "Error al cargar categorías del presupuesto: ${e.message}"
             }
+        }
+    }
+
+    fun loadBudgetCategoryLimitsForList(budgetIds: Collection<Long>) {
+        viewModelScope.launch {
+            val ids = budgetIds.distinct()
+
+            if (ids.isEmpty()) {
+                _budgetCategoryLimitsByBudgetId.value = emptyMap()
+                return@launch
+            }
+
+            val limitsByBudget = ids.associateWith { budgetId ->
+                try {
+                    repository.getBudgetCategoryLimits(budgetId)
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+
+            _budgetCategoryLimitsByBudgetId.value = limitsByBudget
         }
     }
 
@@ -142,6 +168,7 @@ class BudgetsViewModel : ViewModel() {
             try {
                 val response = repository.deleteBudget(id)
                 if (response.isSuccessful) {
+                    _budgetCategoryLimitsByBudgetId.value = _budgetCategoryLimitsByBudgetId.value - id
                     _operationSuccess.value = true
                     loadBudgets()
                 } else {
@@ -161,6 +188,7 @@ class BudgetsViewModel : ViewModel() {
         if (categoryId == null) {
             currentLimits.forEach { repository.deleteBudgetCategoryLimit(budgetId, it.id) }
             _currentBudgetCategoryLimits.value = emptyList()
+            _budgetCategoryLimitsByBudgetId.value = _budgetCategoryLimitsByBudgetId.value + (budgetId to emptyList())
             return
         }
 
@@ -177,7 +205,9 @@ class BudgetsViewModel : ViewModel() {
             currentLimits.drop(1).forEach { repository.deleteBudgetCategoryLimit(budgetId, it.id) }
         }
 
-        _currentBudgetCategoryLimits.value = repository.getBudgetCategoryLimits(budgetId)
+        val updatedLimits = repository.getBudgetCategoryLimits(budgetId)
+        _currentBudgetCategoryLimits.value = updatedLimits
+        _budgetCategoryLimitsByBudgetId.value = _budgetCategoryLimitsByBudgetId.value + (budgetId to updatedLimits)
     }
 
     fun resetSuccess() {
