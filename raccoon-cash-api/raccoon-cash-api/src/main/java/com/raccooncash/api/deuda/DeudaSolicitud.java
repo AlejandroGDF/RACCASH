@@ -24,7 +24,6 @@ public class DeudaSolicitud {
 
     private LocalDate dueDate;
 
-    @NotNull(message = "La cuenta es obligatoria")
     private Long accountId;
 
     private Boolean reminderEnabled;

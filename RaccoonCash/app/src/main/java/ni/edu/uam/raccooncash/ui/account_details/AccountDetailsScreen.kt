@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import ni.edu.uam.raccooncash.data.model.AccountResponse
 import ni.edu.uam.raccooncash.ui.accounts.AccountsViewModel
 import ni.edu.uam.raccooncash.ui.accounts.TransactionItem
+import ni.edu.uam.raccooncash.util.formatCurrencyAmount
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,7 +107,7 @@ fun AccountDetailsScreen(
                             color = Color.Gray
                         )
                         Text(
-                            text = "${account.currency}${String.format("%.${account.decimalPrecision ?: 2}f", account.currentBalance)}",
+                            text = formatCurrencyAmount(account.currentBalance, account.currency, account.decimalPrecision ?: 2),
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -120,7 +121,7 @@ fun AccountDetailsScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Entradas", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                                 Text(
-                                    "+ ${account.currency}${String.format("%.${account.decimalPrecision ?: 2}f", totalIncome)}",
+                                    "+ ${formatCurrencyAmount(totalIncome, account.currency, account.decimalPrecision ?: 2)}",
                                     color = Color(0xFFA5D6A7),
                                     fontWeight = FontWeight.Bold
                                 )
@@ -128,7 +129,7 @@ fun AccountDetailsScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Salidas", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                                 Text(
-                                    "- ${account.currency}${String.format("%.${account.decimalPrecision ?: 2}f", totalExpense)}",
+                                    "- ${formatCurrencyAmount(totalExpense, account.currency, account.decimalPrecision ?: 2)}",
                                     color = Color(0xFFEF9A9A),
                                     fontWeight = FontWeight.Bold
                                 )

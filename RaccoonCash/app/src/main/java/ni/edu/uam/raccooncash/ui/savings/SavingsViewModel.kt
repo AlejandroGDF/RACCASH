@@ -67,6 +67,7 @@ class SavingsViewModel : ViewModel() {
         _isLoading.value = true
         try {
             _currentGoalTransactions.value = repository.getSavingGoalTransactions(goalId)
+                .filter { it.savingGoalId == goalId }
             _error.value = null
         } catch (e: Exception) {
             _error.value = "Error al cargar transacciones: ${e.message}"

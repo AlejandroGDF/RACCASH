@@ -71,6 +71,9 @@ public class DeudaServicio {
     @Transactional
     public DeudaRespuesta createDebt(DeudaSolicitud request) {
         validateDebtRequest(request);
+        if (request.getAccountId() == null) {
+            throw new SolicitudIncorrectaException("La cuenta del movimiento inicial es obligatoria");
+        }
         Cuenta account = findActiveAccount(request.getAccountId());
 
         Deuda debt = new Deuda();
@@ -87,6 +90,10 @@ public class DeudaServicio {
         applyReminder(debt, request);
 
         Deuda savedDebt = debtRepository.save(debt);
+        Transaccion initialTransaction = buildInitialDebtTransaction(savedDebt, account);
+        applyInitialDebtEffect(savedDebt, account);
+        accountRepository.save(account);
+        transactionRepository.save(initialTransaction);
         return new DeudaRespuesta(savedDebt);
     }
 
@@ -94,7 +101,7 @@ public class DeudaServicio {
     public DeudaRespuesta updateDebt(Long id, DeudaSolicitud request) {
         validateDebtRequest(request);
         Deuda debt = findActiveDebt(id);
-        Cuenta account = findActiveAccount(request.getAccountId());
+        Cuenta account = request.getAccountId() != null ? findActiveAccount(request.getAccountId()) : null;
 
         BigDecimal paidAmount = money(safeAmount(debt.getPaidAmount()));
         if (request.getTotalAmount().compareTo(paidAmount) < 0) {
@@ -226,10 +233,49 @@ public class DeudaServicio {
         transaction.setType(debt.getType() == TipoDeuda.I_OWE ? TipoTransaccion.EXPENSE : TipoTransaccion.INCOME);
         transaction.setAccount(account);
         transaction.setCategory(resolvePaymentCategory(debt));
+        transaction.setDebt(debt);
         transaction.setNotes(notes);
         transaction.setActive(true);
         transaction.setGeneratedByDebtPayment(true);
         return transaction;
+    }
+
+    private Transaccion buildInitialDebtTransaction(Deuda debt, Cuenta account) {
+        Transaccion transaction = new Transaccion();
+        transaction.setDescription(initialDebtDescription(debt));
+        transaction.setAmount(money(debt.getTotalAmount()));
+        transaction.setDate(LocalDateTime.now());
+        transaction.setType(debt.getType() == TipoDeuda.I_OWE ? TipoTransaccion.INCOME : TipoTransaccion.EXPENSE);
+        transaction.setAccount(account);
+        transaction.setCategory(resolveInitialDebtCategory(debt));
+        transaction.setDebt(debt);
+        transaction.setNotes(debt.getDescription());
+        transaction.setActive(true);
+        transaction.setGeneratedByDebtPayment(false);
+        return transaction;
+    }
+
+    private void applyInitialDebtEffect(Deuda debt, Cuenta account) {
+        BigDecimal amount = money(debt.getTotalAmount());
+        if (debt.getType() == TipoDeuda.I_OWE) {
+            account.setCurrentBalance(money(currentBalance(account).add(amount)));
+            return;
+        }
+
+        ensureSufficientBalance(account, amount);
+        account.setCurrentBalance(money(currentBalance(account).subtract(amount)));
+    }
+
+    private Categoria resolveInitialDebtCategory(Deuda debt) {
+        TipoCategoria categoryType = debt.getType() == TipoDeuda.I_OWE ? TipoCategoria.INCOME : TipoCategoria.EXPENSE;
+        return findOrCreateCategory("Préstamo", categoryType, "#A78BFA", "hand-coins");
+    }
+
+    private String initialDebtDescription(Deuda debt) {
+        if (debt.getType() == TipoDeuda.I_OWE) {
+            return "Prestamo recibido de " + debt.getPersonName();
+        }
+        return "Prestamo entregado a " + debt.getPersonName();
     }
 
     private Categoria resolvePaymentCategory(Deuda debt) {
@@ -311,9 +357,6 @@ public class DeudaServicio {
         if (request.getType() == null) {
             throw new SolicitudIncorrectaException("El tipo de deuda es obligatorio");
         }
-        if (request.getAccountId() == null) {
-            throw new SolicitudIncorrectaException("La cuenta es obligatoria");
-        }
         if (Boolean.TRUE.equals(request.getReminderEnabled()) && request.getReminderAt() == null) {
             throw new SolicitudIncorrectaException("La fecha del recordatorio es obligatoria si el recordatorio esta habilitado");
         }
@@ -349,7 +392,7 @@ public class DeudaServicio {
     }
 
     private boolean matchesAccount(Deuda debt, Long accountId) {
-        return accountId == null || debt.getAccount().getId().equals(accountId);
+        return accountId == null || (debt.getAccount() != null && debt.getAccount().getId().equals(accountId));
     }
 
     private boolean matchesDueRange(Deuda debt, LocalDate dueFrom, LocalDate dueTo) {

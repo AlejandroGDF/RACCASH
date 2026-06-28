@@ -1,6 +1,7 @@
 package ni.edu.uam.raccooncash.ui.accounts
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,7 +16,6 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import ni.edu.uam.raccooncash.R
 import ni.edu.uam.raccooncash.data.model.AccountResponse
 import ni.edu.uam.raccooncash.data.model.PresupuestoRespuesta
 import ni.edu.uam.raccooncash.data.model.SavingGoalResponse
@@ -46,6 +49,7 @@ import ni.edu.uam.raccooncash.data.model.TransactionResponse
 import ni.edu.uam.raccooncash.ui.budgets.BudgetsViewModel
 import ni.edu.uam.raccooncash.ui.components.RaccAddFloatingActionButton
 import ni.edu.uam.raccooncash.ui.savings.SavingsViewModel
+import ni.edu.uam.raccooncash.util.formatCurrencyAmount
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -150,19 +154,14 @@ fun AccountsScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            "Inicio",
-                            fontSize = 30.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = HomePalette.TextPrimary
-                        )
-                        Text(
-                            "Resumen financiero",
-                            fontSize = 13.sp,
-                            color = HomePalette.TextSecondary
-                        )
-                    }
+                    Image(
+                        painter = painterResource(id = R.drawable.racconcashlogo),
+                        contentDescription = "RACCASH",
+                        modifier = Modifier
+                            .height(44.dp)
+                            .widthIn(max = 180.dp),
+                        contentScale = ContentScale.Fit
+                    )
                 },
                 actions = {
                     IconButton(onClick = onSettingsClick) {
@@ -170,13 +169,6 @@ fun AccountsScreen(
                             Icons.Default.Settings,
                             contentDescription = "Configuración",
                             tint = HomePalette.TextSecondary
-                        )
-                    }
-                    IconButton(onClick = { viewModel.loadAccounts() }) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Recargar",
-                            tint = HomePalette.Sky
                         )
                     }
                 },
@@ -314,7 +306,7 @@ fun AccountsScreen(
                              
                             if (dailySum != 0.0) {
                                 Text(
-                                    text = "${if (dailySum > 0) "+" else ""}C$${String.format(Locale.getDefault(), "%.2f", dailySum)}",
+                                    text = "${if (dailySum > 0) "+" else ""}${formatHomeCurrency(dailySum)}",
                                     color = HomePalette.TextSecondary,
                                     fontSize = 14.sp
                                 )
@@ -356,7 +348,7 @@ private fun HomeInsightSection(
             ?: expense.category?.name?.takeIf { it.isNotBlank() }
             ?: "Gasto"
     } ?: "Sin gastos hoy"
-    val largestExpenseAmount = largestExpenseToday?.let { formatHomeCurrency(it.amount) } ?: "C$0.00"
+    val largestExpenseAmount = largestExpenseToday?.let { formatHomeCurrency(it.amount) } ?: formatHomeCurrency(0.0)
     val closestGoal = remember(savingGoals) {
         savingGoals.maxByOrNull { goal ->
             calculateHomeProgress(current = goal.currentAmount, target = goal.targetAmount)
@@ -541,7 +533,7 @@ private fun formatHomeCurrency(amount: Double): String {
 }
 
 private fun formatHomeCurrency(amount: Double, currency: String): String {
-    return "$currency${String.format(Locale.US, "%.2f", amount)}"
+    return formatCurrencyAmount(amount, currency)
 }
 
 private fun calculateHomeProgress(current: Double, target: Double): Double {
@@ -764,7 +756,7 @@ fun BalanceTrendCard(transactions: List<TransactionResponse>) {
                             strokeWidth = 1.dp.toPx()
                         )
                         drawContext.canvas.nativeCanvas.drawText(
-                            "C$${String.format(Locale.getDefault(), "%.0f", labelValue)}",
+                            formatCurrencyAmount(labelValue, "C$", 0),
                             labelPadding - 12.dp.toPx(),
                             y + 4.dp.toPx(),
                             textPaint
@@ -950,7 +942,7 @@ fun AccountPocketCard(
 
                 Column {
                     Text(
-                        text = "${account.currency}${String.format("%.${account.decimalPrecision ?: 2}f", account.currentBalance)}",
+                        text = formatCurrencyAmount(account.currentBalance, account.currency, account.decimalPrecision ?: 2),
                         color = HomePalette.TextPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 24.sp,
@@ -1143,7 +1135,7 @@ private fun RecentTransactionItem(
             Spacer(modifier = Modifier.width(10.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "$prefix C$ ${String.format(Locale.getDefault(), "%.2f", transaction.amount)}",
+                    text = if (prefix.isBlank()) formatHomeCurrency(transaction.amount) else "$prefix ${formatHomeCurrency(transaction.amount)}",
                     color = amountColor,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
@@ -1258,7 +1250,7 @@ fun TransactionItem(
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = "$prefix C$ ${String.format(Locale.getDefault(), "%.2f", transaction.amount)}",
+                text = if (prefix.isBlank()) formatHomeCurrency(transaction.amount) else "$prefix ${formatHomeCurrency(transaction.amount)}",
                 color = amountColor,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp

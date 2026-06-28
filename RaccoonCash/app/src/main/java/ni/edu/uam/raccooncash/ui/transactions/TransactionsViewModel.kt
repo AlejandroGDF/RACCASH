@@ -69,7 +69,8 @@ class TransactionsViewModel : ViewModel() {
         categoryId: Long? = null,
         description: String,
         notes: String? = null,
-        dateTime: LocalDateTime = LocalDateTime.now()
+        dateTime: LocalDateTime = LocalDateTime.now(),
+        budgetId: Long? = null
     ) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -86,7 +87,8 @@ class TransactionsViewModel : ViewModel() {
                     categoryId = categoryId,
                     description = description,
                     notes = notes,
-                    date = formattedDate
+                    date = formattedDate,
+                    budgetId = budgetId
                 )
                 repository.createTransaction(request)
                 
@@ -116,7 +118,9 @@ class TransactionsViewModel : ViewModel() {
         categoryId: Long? = null,
         description: String,
         notes: String? = null,
-        dateTime: LocalDateTime = LocalDateTime.now()
+        dateTime: LocalDateTime = LocalDateTime.now(),
+        budgetId: Long? = null,
+        savingGoalId: Long? = null
     ) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -133,7 +137,9 @@ class TransactionsViewModel : ViewModel() {
                     categoryId = categoryId,
                     description = description,
                     notes = notes,
-                    date = formattedDate
+                    date = formattedDate,
+                    savingGoalId = savingGoalId,
+                    budgetId = budgetId
                 )
                 repository.updateTransaction(id, request)
                 

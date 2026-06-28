@@ -6,7 +6,7 @@ data class DebtRequest(
     val totalAmount: Double,
     val type: String,
     val dueDate: String?,
-    val accountId: Long,
+    val accountId: Long?,
     val reminderEnabled: Boolean,
     val reminderAt: String?
 )
@@ -22,7 +22,7 @@ data class DebtResponse(
     val status: String,
     val dueDate: String?,
     val overdue: Boolean,
-    val accountId: Long,
+    val accountId: Long?,
     val accountName: String?,
     val reminderEnabled: Boolean,
     val reminderAt: String?,

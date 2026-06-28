@@ -12,6 +12,8 @@ import ni.edu.uam.raccooncash.data.model.DebtPaymentResponse
 import ni.edu.uam.raccooncash.data.model.DebtRequest
 import ni.edu.uam.raccooncash.data.model.DebtResponse
 import ni.edu.uam.raccooncash.data.repository.RaccoonRepository
+import org.json.JSONObject
+import retrofit2.HttpException
 
 class DebtsViewModel : ViewModel() {
     private val repository = RaccoonRepository()
@@ -103,11 +105,12 @@ class DebtsViewModel : ViewModel() {
         totalAmount: Double,
         type: String,
         dueDate: String?,
-        accountId: Long,
+        accountId: Long?,
         reminderEnabled: Boolean,
-        reminderAt: String?
+        reminderAt: String?,
+        onCompleted: (() -> Unit)? = null
     ) {
-        saveDebt(null, personName, description, totalAmount, type, dueDate, accountId, reminderEnabled, reminderAt)
+        saveDebt(null, personName, description, totalAmount, type, dueDate, accountId, reminderEnabled, reminderAt, onCompleted)
     }
 
     fun updateDebt(
@@ -117,11 +120,12 @@ class DebtsViewModel : ViewModel() {
         totalAmount: Double,
         type: String,
         dueDate: String?,
-        accountId: Long,
+        accountId: Long?,
         reminderEnabled: Boolean,
-        reminderAt: String?
+        reminderAt: String?,
+        onCompleted: (() -> Unit)? = null
     ) {
-        saveDebt(id, personName, description, totalAmount, type, dueDate, accountId, reminderEnabled, reminderAt)
+        saveDebt(id, personName, description, totalAmount, type, dueDate, accountId, reminderEnabled, reminderAt, onCompleted)
     }
 
     private fun saveDebt(
@@ -131,9 +135,10 @@ class DebtsViewModel : ViewModel() {
         totalAmount: Double,
         type: String,
         dueDate: String?,
-        accountId: Long,
+        accountId: Long?,
         reminderEnabled: Boolean,
-        reminderAt: String?
+        reminderAt: String?,
+        onCompleted: (() -> Unit)?
     ) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -156,8 +161,17 @@ class DebtsViewModel : ViewModel() {
                     repository.updateDebt(id, request)
                 }
                 _selectedDebt.value = savedDebt
+                _accounts.value = repository.getAccounts()
                 _operationSuccess.value = true
                 loadDebts()
+                onCompleted?.invoke()
+            } catch (e: HttpException) {
+                val message = e.response()?.errorBody()?.string()?.let { body ->
+                    runCatching { JSONObject(body).optString("message") }.getOrNull()
+                        ?.takeIf { it.isNotBlank() }
+                }
+                _error.value = message ?: "Error del servidor al guardar la deuda (${e.code()})."
+                e.printStackTrace()
             } catch (e: Exception) {
                 _error.value = "Error al guardar la deuda."
                 e.printStackTrace()

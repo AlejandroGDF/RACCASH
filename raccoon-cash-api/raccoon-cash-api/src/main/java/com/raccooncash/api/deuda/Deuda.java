@@ -59,7 +59,7 @@ public class Deuda {
     private LocalDate dueDate;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "account_id", nullable = false)
+    @JoinColumn(name = "account_id")
     private Cuenta account;
 
     private Boolean reminderEnabled = false;

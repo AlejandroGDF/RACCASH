@@ -67,7 +67,7 @@ fun SettingsScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Raccoon Cash",
+                    text = "RACCASH",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
@@ -84,7 +84,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
-                    text = "Desarrollado con ❤️ por el equipo Raccoon",
+                    text = "Desarrollado con ❤️ por el equipo RACCASH",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFFB5A9D4)
                 )

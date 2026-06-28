@@ -214,7 +214,7 @@ fun PinLockScreen(
                     }
 
                     Text(
-                        text = "Raccoon Cash bloqueado",
+                        text = "RACCASH bloqueado",
                         color = Color.White,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,

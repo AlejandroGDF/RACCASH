@@ -9,5 +9,6 @@ data class TransactionRequest(
     val description: String,
     val notes: String? = null,
     val date: String,
-    val savingGoalId: Long? = null
+    val savingGoalId: Long? = null,
+    val budgetId: Long? = null
 )

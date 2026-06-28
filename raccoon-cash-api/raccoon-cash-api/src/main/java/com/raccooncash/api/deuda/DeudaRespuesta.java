@@ -40,8 +40,8 @@ public class DeudaRespuesta {
                 && debt.getDueDate().isBefore(LocalDate.now())
                 && debt.getStatus() != EstadoDeuda.PAID
                 && debt.getStatus() != EstadoDeuda.CANCELLED;
-        this.accountId = debt.getAccount().getId();
-        this.accountName = debt.getAccount().getName();
+        this.accountId = debt.getAccount() != null ? debt.getAccount().getId() : null;
+        this.accountName = debt.getAccount() != null ? debt.getAccount().getName() : null;
         this.reminderEnabled = Boolean.TRUE.equals(debt.getReminderEnabled());
         this.reminderAt = debt.getReminderAt();
         this.active = debt.getActive();

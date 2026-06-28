@@ -33,8 +33,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import ni.edu.uam.raccooncash.data.model.BudgetCategoryLimitResponse
 import ni.edu.uam.raccooncash.data.model.PresupuestoRespuesta
 import ni.edu.uam.raccooncash.ui.components.RaccAddFloatingActionButton
+import ni.edu.uam.raccooncash.util.formatCurrencyAmount
 import java.util.Locale
-import kotlin.math.abs
 
 private object BudgetPalette {
     val Background = Color(0xFF080B14)
@@ -578,8 +578,7 @@ private fun buildBudgetCategoryLabels(
 }
 
 private fun formatBudgetCurrency(amount: Double, currency: String): String {
-    val sign = if (amount < 0.0) "-" else ""
-    return "$sign$currency${String.format(Locale.US, "%.2f", abs(amount))}"
+    return formatCurrencyAmount(amount, currency)
 }
 
 private fun formatBudgetPercent(usageRatio: Double): String {

@@ -71,6 +71,7 @@ import ni.edu.uam.raccooncash.ui.transactions.TransactionsViewModel
 import ni.edu.uam.raccooncash.ui.transactions.buildTransactionGroups
 import ni.edu.uam.raccooncash.ui.transactions.matchesTransactionFilters
 import ni.edu.uam.raccooncash.ui.transactions.parseTransactionDate
+import ni.edu.uam.raccooncash.util.formatCurrencyAmount
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -102,6 +103,7 @@ class MainActivity : ComponentActivity() {
                 val savingsViewModel: SavingsViewModel = viewModel()
                 val budgetsViewModel: BudgetsViewModel = viewModel()
                 val debtsViewModel: DebtsViewModel = viewModel()
+                val categoryTransactions by accountsViewModel.transactions.collectAsState()
                 var currentScreen by remember { mutableStateOf("inicio") }
                 var editingTransaction by remember { mutableStateOf<TransactionResponse?>(null) }
                 var editingAccount by remember { mutableStateOf<AccountResponse?>(null) }
@@ -132,7 +134,10 @@ class MainActivity : ComponentActivity() {
                                 Triple("ahorro", "Metas", Icons.Default.Star)
                             )
                             items.forEach { (screen, label, icon) ->
-                                val selected = currentScreen == screen
+                                val selected = currentScreen == screen ||
+                                    (screen == "deudas" && currentScreen in listOf("debt_details", "add_debt", "add_debt_payment")) ||
+                                    (screen == "presupuestos" && currentScreen in listOf("budget_details", "add_budget", "add_budget_transaction")) ||
+                                    (screen == "ahorro" && currentScreen in listOf("saving_goal_details", "add_goal_transaction", "add_saving_goal"))
                                 NavigationBarItem(
                                     selected = selected,
                                     onClick = {
@@ -258,6 +263,9 @@ class MainActivity : ComponentActivity() {
                             "add_debt" -> AddDebtScreen(
                                 viewModel = debtsViewModel,
                                 debtToEdit = editingDebt,
+                                onSaved = {
+                                    accountsViewModel.loadAccounts()
+                                },
                                 onBack = {
                                     currentScreen = if (editingDebt != null && selectedDebt?.id == editingDebt?.id) {
                                         "debt_details"
@@ -400,6 +408,7 @@ class MainActivity : ComponentActivity() {
                             "add_transaction" -> AddTransactionScreen(
                                 viewModel = transactionsViewModel,
                                 transactionToEdit = editingTransaction,
+                                categoryTransactions = categoryTransactions,
                                 onBack = { 
                                     currentScreen = "inicio"
                                     accountsViewModel.loadAccounts()
@@ -413,6 +422,8 @@ class MainActivity : ComponentActivity() {
                                     initialDescription = budgetTransactionInitialDescription,
                                     initialDate = budgetTransactionInitialDate,
                                     initialCategoryId = budgetTransactionInitialCategoryId,
+                                    initialBudgetId = it.id,
+                                    categoryTransactions = categoryTransactions,
                                     onBack = {
                                         currentScreen = "budget_details"
                                         accountsViewModel.loadAccounts()
@@ -1102,7 +1113,7 @@ private fun formatTransactionsCurrency(
     }
     val normalizedAmount = if (amount < 0.0) -amount else amount
 
-    return "${sign}C$${String.format(Locale.getDefault(), "%.2f", normalizedAmount)}"
+    return "$sign${formatCurrencyAmount(normalizedAmount)}"
 }
 
 private fun parseTransactionAccountColor(color: String?): Color? {

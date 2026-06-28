@@ -7,6 +7,8 @@ import com.raccooncash.api.categoria.CategoriaRepositorio;
 import com.raccooncash.api.categoria.TipoCategoria;
 import com.raccooncash.api.excepcion.SolicitudIncorrectaException;
 import com.raccooncash.api.excepcion.RecursoNoEncontradoException;
+import com.raccooncash.api.presupuesto.Presupuesto;
+import com.raccooncash.api.presupuesto.PresupuestoRepositorio;
 import com.raccooncash.api.savinggoal.SavingGoal;
 import com.raccooncash.api.savinggoal.SavingGoalRepository;
 import org.springframework.stereotype.Service;
@@ -26,15 +28,18 @@ public class TransaccionServicio {
     private final CuentaRepositorio accountRepository;
     private final CategoriaRepositorio categoryRepository;
     private final SavingGoalRepository savingGoalRepository;
+    private final PresupuestoRepositorio budgetRepository;
 
     public TransaccionServicio(TransaccionRepositorio transactionRepository,
-                              CuentaRepositorio accountRepository,
-                              CategoriaRepositorio categoryRepository,
-                              SavingGoalRepository savingGoalRepository) {
+                               CuentaRepositorio accountRepository,
+                               CategoriaRepositorio categoryRepository,
+                               SavingGoalRepository savingGoalRepository,
+                               PresupuestoRepositorio budgetRepository) {
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
         this.categoryRepository = categoryRepository;
         this.savingGoalRepository = savingGoalRepository;
+        this.budgetRepository = budgetRepository;
     }
 
     @Transactional(readOnly = true)
@@ -96,8 +101,8 @@ public class TransaccionServicio {
     }
 
     private void ensureTransactionCanBeManagedDirectly(Transaccion transaction) {
-        if (Boolean.TRUE.equals(transaction.getGeneratedByDebtPayment())) {
-            throw new SolicitudIncorrectaException("Las transacciones generadas por pagos de deuda se gestionan desde el modulo de deudas");
+        if (Boolean.TRUE.equals(transaction.getGeneratedByDebtPayment()) || transaction.getDebt() != null) {
+            throw new SolicitudIncorrectaException("Las transacciones vinculadas a deudas se gestionan desde el modulo de deudas");
         }
     }
 
@@ -108,6 +113,12 @@ public class TransaccionServicio {
         Categoria category = null;
         Cuenta destinationAccount = null;
         SavingGoal savingGoal = null;
+        Presupuesto budget = null;
+
+        if (request.getBudgetId() != null) {
+            budget = budgetRepository.findByIdAndActiveTrue(request.getBudgetId())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Presupuesto no encontrado"));
+        }
 
         if (request.getSavingGoalId() != null) {
             savingGoal = savingGoalRepository.findById(request.getSavingGoalId())
@@ -139,6 +150,7 @@ public class TransaccionServicio {
         transaction.setToAccount(destinationAccount);
         transaction.setCategory(category);
         transaction.setSavingGoal(savingGoal);
+        transaction.setBudget(budget);
         transaction.setNotes(request.getNotes());
         transaction.setActive(true);
 
@@ -253,6 +265,16 @@ public class TransaccionServicio {
                 .orElseThrow(() -> new RecursoNoEncontradoException("SavingGoal no encontrada"));
 
         return transactionRepository.findBySavingGoalAndActiveTrue(savingGoal).stream()
+                .map(TransaccionRespuesta::new)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TransaccionRespuesta> getTransactionsByBudgetId(Long budgetId) {
+        Presupuesto budget = budgetRepository.findByIdAndActiveTrue(budgetId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Presupuesto no encontrado"));
+
+        return transactionRepository.findByBudgetAndActive(budget).stream()
                 .map(TransaccionRespuesta::new)
                 .collect(Collectors.toList());
     }

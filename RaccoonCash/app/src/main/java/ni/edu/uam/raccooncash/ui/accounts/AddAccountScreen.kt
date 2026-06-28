@@ -67,6 +67,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ni.edu.uam.raccooncash.data.model.AccountResponse
+import ni.edu.uam.raccooncash.util.formatCurrencyAmount
+import ni.edu.uam.raccooncash.util.formatEditableMoney
+import ni.edu.uam.raccooncash.util.isPotentialMoneyInput
+import ni.edu.uam.raccooncash.util.parseMoneyInput
 
 val accountColors = listOf(
     Color(0xFF7E57C2), // Purple
@@ -142,7 +146,7 @@ fun AddAccountScreen(
     onBack: () -> Unit
 ) {
     var name by remember { mutableStateOf(accountToEdit?.name ?: "") }
-    var balance by remember { mutableStateOf(accountToEdit?.initialBalance?.toString() ?: "") }
+    var balance by remember { mutableStateOf(formatEditableMoney(accountToEdit?.initialBalance)) }
 
     val initialColor = if (accountToEdit?.color != null) {
         try {
@@ -165,7 +169,8 @@ fun AddAccountScreen(
     var selectedIcon by remember { mutableStateOf(getInitialAccountIconOption(accountToEdit?.name)) }
 
     val success by viewModel.addAccountSuccess.collectAsState()
-    val canSave = name.isNotEmpty()
+    val balanceValue = parseMoneyInput(balance)
+    val canSave = name.isNotEmpty() && (balance.isBlank() || balanceValue != null)
 
     LaunchedEffect(success) {
         if (success) {
@@ -185,7 +190,7 @@ fun AddAccountScreen(
             viewModel.updateAccount(
                 id = accountToEdit.id,
                 name = name,
-                balance = balance.toDoubleOrNull() ?: 0.0,
+                balance = balanceValue ?: 0.0,
                 currency = selectedCurrency.symbol,
                 color = colorHex,
                 precision = safePrecision
@@ -193,7 +198,7 @@ fun AddAccountScreen(
         } else {
             viewModel.createAccount(
                 name = name,
-                balance = balance.toDoubleOrNull() ?: 0.0,
+                balance = balanceValue ?: 0.0,
                 currency = selectedCurrency.symbol,
                 color = colorHex,
                 precision = safePrecision
@@ -260,7 +265,7 @@ fun AddAccountScreen(
                 )
 
                 Text(
-                    text = "Personaliza cómo verás esta cuenta en Raccoon Cash.",
+                    text = "Personaliza cómo verás esta cuenta en RACCASH.",
                     color = AddAccountPalette.TextSecondary,
                     fontSize = 14.sp
                 )
@@ -296,7 +301,7 @@ fun AddAccountScreen(
                     currency = selectedCurrency,
                     accentColor = selectedColor,
                     onBalanceChange = { value ->
-                        if (value.isEmpty() || value.toDoubleOrNull() != null) {
+                        if (isPotentialMoneyInput(value)) {
                             balance = value
                         }
                     }
@@ -548,6 +553,10 @@ private fun BalanceCard(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            val balancePreview = parseMoneyInput(balance)?.let { amount ->
+                formatCurrencyAmount(amount, currency.symbol)
+            } ?: "${currency.symbol}${if (balance.isBlank()) "0.00" else balance}"
+
             Text(
                 text = "Saldo inicial",
                 color = AddAccountPalette.TextPrimary,
@@ -556,7 +565,7 @@ private fun BalanceCard(
             )
 
             Text(
-                text = "${currency.symbol}${if (balance.isBlank()) "0.00" else balance}",
+                text = balancePreview,
                 color = accentColor,
                 fontSize = 34.sp,
                 fontWeight = FontWeight.ExtraBold

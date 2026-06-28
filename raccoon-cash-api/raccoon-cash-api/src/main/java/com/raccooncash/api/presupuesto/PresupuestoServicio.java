@@ -4,16 +4,13 @@ import com.raccooncash.api.excepcion.SolicitudIncorrectaException;
 import com.raccooncash.api.excepcion.RecursoNoEncontradoException;
 import com.raccooncash.api.transaccion.Transaccion;
 import com.raccooncash.api.transaccion.TransaccionRepositorio;
-import com.raccooncash.api.transaccion.TipoTransaccion;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,14 +18,11 @@ public class PresupuestoServicio {
 
     private final PresupuestoRepositorio budgetRepository;
     private final TransaccionRepositorio transactionRepository;
-    private final LimiteCategoriaPresupuestoRepositorio limitRepository;
 
     public PresupuestoServicio(PresupuestoRepositorio budgetRepository,
-                               TransaccionRepositorio transactionRepository,
-                               LimiteCategoriaPresupuestoRepositorio limitRepository) {
+                               TransaccionRepositorio transactionRepository) {
         this.budgetRepository = budgetRepository;
         this.transactionRepository = transactionRepository;
-        this.limitRepository = limitRepository;
     }
 
     @Transactional(readOnly = true)
@@ -140,45 +134,9 @@ public class PresupuestoServicio {
     }
 
     private BigDecimal calculateCurrentAmount(Presupuesto budget) {
-        TipoTransaccion transactionType = Boolean.TRUE.equals(budget.getExpense()) ? TipoTransaccion.EXPENSE : null;
-        List<Transaccion> transactions = transactionRepository.findWithFilters(
-                null,
-                null,
-                transactionType,
-                budget.getStartDate().atStartOfDay(),
-                budget.getEndDate().atTime(LocalTime.MAX));
-
-        Set<Long> categoryIds = Boolean.TRUE.equals(budget.getIncludeAllTransactions())
-                ? Set.of()
-                : limitRepository.findAllByBudgetId(budget.getId())
-                        .stream()
-                        .map(limit -> limit.getCategory().getId())
-                        .collect(Collectors.toSet());
-
-        return transactions.stream()
-                .filter(transaction -> shouldIncludeTransaction(budget, transaction, categoryIds))
+        return transactionRepository.findByBudgetAndActive(budget).stream()
                 .map(Transaccion::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private boolean shouldIncludeTransaction(Presupuesto budget, Transaccion transaction, Set<Long> categoryIds) {
-        if (Boolean.TRUE.equals(budget.getExpense())) {
-            if (transaction.getType() != TipoTransaccion.EXPENSE) {
-                return false;
-            }
-            if (Boolean.TRUE.equals(budget.getIncludeAllTransactions())) {
-                return true;
-            }
-            return transaction.getCategory() != null && categoryIds.contains(transaction.getCategory().getId());
-        }
-
-        if (!Boolean.TRUE.equals(budget.getIncludeAllTransactions()) && !categoryIds.isEmpty()) {
-            return transaction.getType() == TipoTransaccion.INCOME
-                    && transaction.getCategory() != null
-                    && categoryIds.contains(transaction.getCategory().getId());
-        }
-
-        return transaction.getSavingGoal() != null;
     }
 
     Presupuesto findActiveBudget(Long id) {

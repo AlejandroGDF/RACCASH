@@ -19,6 +19,7 @@ public class TransaccionSolicitud {
     private Long toAccountId;
     private Long categoryId;
     private Long savingGoalId;
+    private Long budgetId;
     private String notes;
     public String getDescription() {
         return description;
@@ -73,6 +74,12 @@ public class TransaccionSolicitud {
     }
     public void setSavingGoalId(Long savingGoalId) {
         this.savingGoalId = savingGoalId;
+    }
+    public Long getBudgetId() {
+        return budgetId;
+    }
+    public void setBudgetId(Long budgetId) {
+        this.budgetId = budgetId;
     }
     public String getNotes() {
         return notes;

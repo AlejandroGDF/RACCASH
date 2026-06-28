@@ -11,6 +11,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -43,6 +44,7 @@ import ni.edu.uam.raccooncash.data.model.TransactionResponse
 import ni.edu.uam.raccooncash.ui.accounts.getEmojiForCategory
 import ni.edu.uam.raccooncash.ui.components.EmojiPickerDialog
 import ni.edu.uam.raccooncash.util.formatEditableMoney
+import ni.edu.uam.raccooncash.util.formatCurrencyAmount
 import ni.edu.uam.raccooncash.util.isPotentialMoneyInput
 import ni.edu.uam.raccooncash.util.parseMoneyInput
 import java.time.LocalDate
@@ -132,7 +134,7 @@ private fun getTransactionTypeAccent(selectedTab: Int): Color {
 
 private fun formatTransactionAccountBalance(account: AccountResponse): String {
     val precision = account.decimalPrecision ?: 2
-    return "${account.currency}${String.format(Locale.US, "%.${precision}f", account.currentBalance)}"
+    return formatCurrencyAmount(account.currentBalance, account.currency, precision)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -144,6 +146,8 @@ fun AddTransactionScreen(
     initialDescription: String = "",
     initialDate: LocalDate? = null,
     initialCategoryId: Long? = null,
+    initialBudgetId: Long? = null,
+    categoryTransactions: List<TransactionResponse> = emptyList(),
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -165,6 +169,7 @@ fun AddTransactionScreen(
     var selectedAccountId by remember { mutableStateOf<Long?>(transactionToEdit?.accountId ?: transactionToEdit?.account?.id) }
     var selectedToAccountId by remember { mutableStateOf<Long?>(transactionToEdit?.destinationAccountId ?: transactionToEdit?.toAccountId ?: transactionToEdit?.toAccount?.id) }
     var selectedCategoryId by remember { mutableStateOf<Long?>(transactionToEdit?.categoryId ?: transactionToEdit?.category?.id ?: initialCategoryId) }
+    val associatedBudgetId = transactionToEdit?.budgetId ?: initialBudgetId
 
     // Date and Time State
     val initialDateTime = if (transactionToEdit?.date != null) {
@@ -240,7 +245,9 @@ fun AddTransactionScreen(
                     categoryId = if (type != "TRANSFER") selectedCategoryId else null,
                     description = title,
                     notes = notes,
-                    dateTime = finalDateTime
+                    dateTime = finalDateTime,
+                    budgetId = associatedBudgetId,
+                    savingGoalId = transactionToEdit?.savingGoalId
                 )
             } else {
                 viewModel.createTransaction(
@@ -251,7 +258,8 @@ fun AddTransactionScreen(
                     categoryId = if (type != "TRANSFER") selectedCategoryId else null,
                     description = title,
                     notes = notes,
-                    dateTime = finalDateTime
+                    dateTime = finalDateTime,
+                    budgetId = associatedBudgetId
                 )
             }
         }
@@ -402,35 +410,84 @@ fun AddTransactionScreen(
     if (showCategorySheet) {
         ModalBottomSheet(
             onDismissRequest = { showCategorySheet = false },
-            sheetState = sheetState
+            sheetState = sheetState,
+            containerColor = TransactionPalette.BackgroundAlt,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            dragHandle = { CategorySheetHandle() }
         ) {
+            var categorySearchQuery by remember { mutableStateOf("") }
+            val categoryType = if (selectedTab == 0) "EXPENSE" else "INCOME"
+            val rootCategories = remember(categories, categoryType) {
+                categories.filter {
+                    it.type == categoryType && (it.parentCategoryId == null || it.parentCategoryId == 0L)
+                }
+            }
+            val filteredCategories = remember(rootCategories, categorySearchQuery) {
+                val query = categorySearchQuery.trim()
+                if (query.isBlank()) {
+                    rootCategories
+                } else {
+                    rootCategories.filter { it.name.contains(query, ignoreCase = true) }
+                }
+            }
+            val selectedCategoryInSheet = categories.find { it.id == selectedCategoryId }
+            val movementCounts = remember(categoryTransactions, categories) {
+                categories.associate { category ->
+                    category.id to countCategoryMovements(category, categoryTransactions, categories)
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .heightIn(max = 650.dp)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 18.dp)
             ) {
                 Text(
-                    "Selecciona Una Categoría",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    textAlign = TextAlign.Center
+                    text = "Selecciona una categoría",
+                    color = TransactionPalette.TextPrimary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Start
                 )
-                
-                val filteredCategories = categories.filter {
-                    val isCorrectType = if (selectedTab == 0) it.type == "EXPENSE" else it.type == "INCOME"
-                    isCorrectType && (it.parentCategoryId == null || it.parentCategoryId == 0L)
-                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Elige la categoría que mejor describe tu movimiento",
+                    color = TransactionPalette.TextSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                CategorySearchField(
+                    value = categorySearchQuery,
+                    onValueChange = { categorySearchQuery = it }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
 
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.heightIn(max = 400.dp)
+                    columns = GridCells.Adaptive(minSize = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 180.dp, max = 440.dp)
                 ) {
-                    items(filteredCategories) { category ->
-                        CategoryIconItem(
+                    if (filteredCategories.isEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            EmptyCategorySearchState(hasQuery = categorySearchQuery.isNotBlank())
+                        }
+                    }
+
+                    items(filteredCategories, key = { it.id }) { category ->
+                        val isSelected = selectedCategoryId == category.id || selectedCategoryInSheet?.parentCategoryId == category.id
+                        CategoryPickerGridCard(
                             category = category,
-                            isSelected = selectedCategoryId == category.id,
+                            movementCount = movementCounts[category.id] ?: 0,
+                            isSelected = isSelected,
                             onClick = {
                                 val subs = categories.filter { it.parentCategoryId == category.id }
                                 if (subs.isNotEmpty()) {
@@ -448,31 +505,17 @@ fun AddTransactionScreen(
                             }
                         )
                     }
-                    item {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .clickable { 
-                                     initialParentIdForNewCategory = null
-                                    showAddCategoryDialog = true 
-                                    showCategorySheet = false
-                                }
-                                .padding(4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(60.dp)
-                                    .background(Color.Gray.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Añadir Categoría")
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        AddCategoryPickerCard(
+                            onClick = {
+                                initialParentIdForNewCategory = null
+                                showAddCategoryDialog = true
+                                showCategorySheet = false
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Añadir", style = MaterialTheme.typography.bodySmall)
-                        }
+                        )
                     }
                 }
-                Spacer(modifier = Modifier.height(32.dp))
             }
         }
     }
@@ -481,6 +524,9 @@ fun AddTransactionScreen(
         SubcategoryPickerSheet(
             parentCategory = parentCategoryForSub!!,
             subcategories = categories.filter { it.parentCategoryId == parentCategoryForSub!!.id },
+            allCategories = categories,
+            categoryTransactions = categoryTransactions,
+            selectedCategoryId = selectedCategoryId,
             onDismiss = { showSubcategorySheet = false },
             onSubcategorySelected = { subcategoryId ->
                 selectedCategoryId = subcategoryId
@@ -502,7 +548,8 @@ fun AddTransactionScreen(
         CategoryEditorDialog(
             categories = categories,
             initialParentId = initialParentIdForNewCategory,
-            onDismiss = { 
+            categoryTransactions = categoryTransactions,
+            onDismiss = {
                 showAddCategoryDialog = false
                 if (initialParentIdForNewCategory != null) {
                     showSubcategorySheet = true
@@ -510,11 +557,10 @@ fun AddTransactionScreen(
                     showCategorySheet = true
                 }
             },
-            onConfirm = { name, type, icon, color, parentId ->
+            onConfirm = { name, type, icon, _, parentId ->
                 viewModel.createCategory(name, type, icon, parentId)
                 showAddCategoryDialog = false
                 if (parentId != null) {
-                    // Si se creó una subcategoría, refrescamos el padre para que aparezca en el selector
                     parentCategoryForSub = categories.find { it.id == parentId }
                     showSubcategorySheet = true
                 } else {
@@ -528,7 +574,8 @@ fun AddTransactionScreen(
         CategoryEditorDialog(
             categories = categories,
             category = categoryToEdit,
-            onDismiss = { 
+            categoryTransactions = categoryTransactions,
+            onDismiss = {
                 categoryToEdit = null
                 showCategorySheet = true
             },
@@ -543,6 +590,478 @@ fun AddTransactionScreen(
                 showCategorySheet = true
             }
         )
+    }
+}
+
+@Composable
+private fun PremiumTransactionTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String,
+    minLines: Int
+) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        shape = RoundedCornerShape(24.dp),
+        singleLine = minLines == 1,
+        minLines = minLines,
+        maxLines = if (minLines == 1) 1 else 5,
+        textStyle = LocalTextStyle.current.copy(
+            color = TransactionPalette.TextPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        ),
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = TransactionPalette.TextPrimary,
+            unfocusedTextColor = TransactionPalette.TextPrimary,
+            focusedContainerColor = TransactionPalette.ElevatedCard,
+            unfocusedContainerColor = TransactionPalette.ElevatedCard,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            cursorColor = TransactionPalette.Lavender,
+            focusedLabelColor = TransactionPalette.Lavender,
+            unfocusedLabelColor = TransactionPalette.TextSecondary,
+            focusedPlaceholderColor = TransactionPalette.TextSecondary,
+            unfocusedPlaceholderColor = TransactionPalette.TextSecondary
+        )
+    )
+}
+
+@Composable
+private fun CategorySelectorCard(
+    selectedCategory: CategoryResponse?,
+    fallbackCategoryName: String?,
+    selectedTab: Int,
+    onClick: () -> Unit
+) {
+    val categoryName = selectedCategory?.name ?: fallbackCategoryName
+    val accentColor = parseTransactionColor(selectedCategory?.color) ?: getTransactionTypeAccent(selectedTab)
+    val title = categoryName ?: "Selecciona una categoría"
+    val subtext = if (categoryName == null) {
+        if (selectedTab == 0) "Elige una categoría para tu gasto" else "Elige una categoría para tu ingreso"
+    } else {
+        if (selectedTab == 0) "Categoría de gasto" else "Categoría de ingreso"
+    }
+
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = TransactionPalette.ElevatedCard,
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.28f)),
+        tonalElevation = 3.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = getEmojiForCategory(categoryName, selectedCategory?.icon),
+                    fontSize = 24.sp
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = TransactionPalette.TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = subtext,
+                    color = TransactionPalette.TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = TransactionPalette.TextSecondary,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategorySheetHandle() {
+    Box(
+        modifier = Modifier
+            .padding(top = 10.dp, bottom = 12.dp)
+            .size(width = 42.dp, height = 4.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(TransactionPalette.TextSecondary.copy(alpha = 0.38f))
+    )
+}
+
+@Composable
+private fun CategorySearchField(
+    value: String,
+    onValueChange: (String) -> Unit
+) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        placeholder = { Text("Buscar categoría…") },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                tint = TransactionPalette.TextSecondary
+            )
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(20.dp),
+        textStyle = MaterialTheme.typography.bodyMedium.copy(
+            color = TransactionPalette.TextPrimary,
+            fontWeight = FontWeight.SemiBold
+        ),
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = TransactionPalette.TextPrimary,
+            unfocusedTextColor = TransactionPalette.TextPrimary,
+            focusedContainerColor = TransactionPalette.ElevatedCard,
+            unfocusedContainerColor = TransactionPalette.ElevatedCard,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            cursorColor = TransactionPalette.Lavender,
+            focusedPlaceholderColor = TransactionPalette.TextSecondary,
+            unfocusedPlaceholderColor = TransactionPalette.TextSecondary
+        )
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CategoryPickerGridCard(
+    category: CategoryResponse,
+    movementCount: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val categoryColor = categoryAccentColor(category)
+    val borderColor = if (isSelected) categoryColor else categoryColor.copy(alpha = 0.36f)
+    val borderWidth = if (isSelected) 2.dp else 1.dp
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(132.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(24.dp),
+        color = TransactionPalette.ElevatedCard,
+        tonalElevation = if (isSelected) 8.dp else 2.dp,
+        border = BorderStroke(borderWidth, borderColor)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            categoryColor.copy(alpha = if (isSelected) 0.22f else 0.12f),
+                            TransactionPalette.ElevatedCard
+                        )
+                    )
+                )
+                .padding(10.dp)
+        ) {
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(categoryColor.copy(alpha = 0.28f))
+                        .border(1.dp, categoryColor.copy(alpha = 0.72f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Categoría seleccionada",
+                        tint = TransactionPalette.TextPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .background(categoryColor.copy(alpha = 0.20f))
+                        .border(1.dp, categoryColor.copy(alpha = 0.44f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = getEmojiForCategory(category.name, category.icon),
+                        fontSize = 25.sp
+                    )
+                }
+                Spacer(modifier = Modifier.height(9.dp))
+                Text(
+                    text = category.name,
+                    color = TransactionPalette.TextPrimary,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = movementCountLabel(movementCount),
+                    color = TransactionPalette.TextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddCategoryPickerCard(onClick: () -> Unit) {
+    AddCategoryPickerCard(
+        title = "Nueva categoría",
+        subtitle = "Crea una categoría personalizada",
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun AddCategoryPickerCard(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(86.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = TransactionPalette.Card,
+        tonalElevation = 2.dp,
+        border = BorderStroke(1.dp, TransactionPalette.Lavender.copy(alpha = 0.40f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            TransactionPalette.Lavender.copy(alpha = 0.10f),
+                            TransactionPalette.Card
+                        )
+                    )
+                )
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(TransactionPalette.Lavender.copy(alpha = 0.16f))
+                    .border(1.dp, TransactionPalette.Lavender.copy(alpha = 0.44f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = TransactionPalette.Lavender,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = TransactionPalette.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    color = TransactionPalette.TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyCategorySearchState(hasQuery: Boolean) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = TransactionPalette.Card,
+        border = BorderStroke(1.dp, TransactionPalette.Border)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = if (hasQuery) "No encontramos esa categoría" else "No hay categorías disponibles",
+                color = TransactionPalette.TextPrimary,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = if (hasQuery) "Prueba con otro nombre o crea una nueva." else "Crea una categoría para empezar.",
+                color = TransactionPalette.TextSecondary,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+private fun categoryAccentColor(category: CategoryResponse): Color {
+    return parseTransactionColor(category.color) ?: TransactionPalette.Lavender
+}
+
+private fun countCategoryMovements(
+    category: CategoryResponse,
+    transactions: List<TransactionResponse>,
+    categories: List<CategoryResponse>
+): Int {
+    val relatedCategoryIds = categories
+        .filter { it.parentCategoryId == category.id }
+        .map { it.id }
+        .toMutableSet()
+        .apply { add(category.id) }
+
+    return transactions.count { transaction ->
+        if (transaction.type != category.type) return@count false
+
+        val transactionCategory = transaction.category
+        val transactionCategoryId = transaction.categoryId ?: transactionCategory?.id
+        when {
+            transactionCategoryId != null && transactionCategoryId in relatedCategoryIds -> true
+            transactionCategory?.parentCategoryId == category.id -> true
+            transactionCategoryId == null && transaction.categoryName?.equals(category.name, ignoreCase = true) == true -> true
+            else -> false
+        }
+    }
+}
+
+private fun movementCountLabel(count: Int): String {
+    return if (count == 1) "1 mov." else "$count movs."
+}
+
+@Composable
+private fun SaveTransactionBottomBar(
+    error: String?,
+    isLoading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = TransactionPalette.Background.copy(alpha = 0.96f),
+        tonalElevation = 8.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+        ) {
+            if (error != null) {
+                Text(
+                    text = error,
+                    color = TransactionPalette.Coral,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            if (enabled) {
+                                listOf(
+                                    TransactionPalette.LavenderStrong,
+                                    TransactionPalette.Lavender,
+                                    Color(0xFFC4B5FD)
+                                )
+                            } else {
+                                listOf(
+                                    TransactionPalette.ElevatedCard,
+                                    TransactionPalette.Card
+                                )
+                            }
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = if (enabled) 0.16f else 0.06f),
+                        shape = RoundedCornerShape(999.dp)
+                    )
+                    .clickable(enabled = enabled, onClick = onClick),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "Guardar",
+                        color = if (enabled) TransactionPalette.TextPrimary else TransactionPalette.TextSecondary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -878,195 +1397,13 @@ private fun TransactionAccountCard(
     }
 }
 
-@Composable
-private fun PremiumTransactionTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    minLines: Int
-) {
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(label) },
-        placeholder = { Text(placeholder) },
-        shape = RoundedCornerShape(24.dp),
-        singleLine = minLines == 1,
-        minLines = minLines,
-        maxLines = if (minLines == 1) 1 else 5,
-        textStyle = LocalTextStyle.current.copy(
-            color = TransactionPalette.TextPrimary,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold
-        ),
-        colors = TextFieldDefaults.colors(
-            focusedTextColor = TransactionPalette.TextPrimary,
-            unfocusedTextColor = TransactionPalette.TextPrimary,
-            focusedContainerColor = TransactionPalette.ElevatedCard,
-            unfocusedContainerColor = TransactionPalette.ElevatedCard,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            cursorColor = TransactionPalette.Lavender,
-            focusedLabelColor = TransactionPalette.Lavender,
-            unfocusedLabelColor = TransactionPalette.TextSecondary,
-            focusedPlaceholderColor = TransactionPalette.TextSecondary,
-            unfocusedPlaceholderColor = TransactionPalette.TextSecondary
-        )
-    )
-}
-
-@Composable
-private fun CategorySelectorCard(
-    selectedCategory: CategoryResponse?,
-    fallbackCategoryName: String?,
-    selectedTab: Int,
-    onClick: () -> Unit
-) {
-    val categoryName = selectedCategory?.name ?: fallbackCategoryName
-    val accentColor = parseTransactionColor(selectedCategory?.color) ?: getTransactionTypeAccent(selectedTab)
-    val title = categoryName ?: "Selecciona una categoría"
-    val subtext = if (categoryName == null) {
-        if (selectedTab == 0) "Elige una categoría para tu gasto" else "Elige una categoría para tu ingreso"
-    } else {
-        if (selectedTab == 0) "Categoría de gasto" else "Categoría de ingreso"
-    }
-
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = TransactionPalette.ElevatedCard,
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.28f)),
-        tonalElevation = 3.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = getEmojiForCategory(categoryName, selectedCategory?.icon),
-                    fontSize = 24.sp
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    color = TransactionPalette.TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = subtext,
-                    color = TransactionPalette.TextSecondary,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Icon(
-                Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = TransactionPalette.TextSecondary,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SaveTransactionBottomBar(
-    error: String?,
-    isLoading: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = TransactionPalette.Background.copy(alpha = 0.96f),
-        tonalElevation = 8.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-        ) {
-            if (error != null) {
-                Text(
-                    text = error,
-                    color = TransactionPalette.Coral,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(58.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            if (enabled) {
-                                listOf(
-                                    TransactionPalette.LavenderStrong,
-                                    TransactionPalette.Lavender,
-                                    Color(0xFFC4B5FD)
-                                )
-                            } else {
-                                listOf(
-                                    TransactionPalette.ElevatedCard,
-                                    TransactionPalette.Card
-                                )
-                            }
-                        )
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = if (enabled) 0.16f else 0.06f),
-                        shape = RoundedCornerShape(999.dp)
-                    )
-                    .clickable(enabled = enabled, onClick = onClick),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        text = "Guardar",
-                        color = if (enabled) TransactionPalette.TextPrimary else TransactionPalette.TextSecondary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
-            }
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoryEditorDialog(
     categories: List<CategoryResponse>,
     category: CategoryResponse? = null,
     initialParentId: Long? = null,
+    categoryTransactions: List<TransactionResponse> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (String, String, String, String, Long?) -> Unit,
     onDelete: (() -> Unit)? = null
@@ -1342,7 +1679,14 @@ fun CategoryEditorDialog(
 
     if (showParentPicker) {
         ParentCategoryPickerDialog(
-            categories = categories.filter { it.type == selectedType && it.parentCategoryId == null && it.id != category?.id },
+            categories = categories.filter {
+                it.type == selectedType &&
+                    (it.parentCategoryId == null || it.parentCategoryId == 0L) &&
+                    it.id != category?.id
+            },
+            allCategories = categories,
+            categoryTransactions = categoryTransactions,
+            selectedCategoryId = selectedParentId,
             onDismiss = { showParentPicker = false },
             onParentSelected = {
                 selectedParentId = it.id
@@ -1356,28 +1700,87 @@ fun CategoryEditorDialog(
 @Composable
 fun ParentCategoryPickerDialog(
     categories: List<CategoryResponse>,
+    allCategories: List<CategoryResponse> = categories,
+    categoryTransactions: List<TransactionResponse> = emptyList(),
+    selectedCategoryId: Long? = null,
     onDismiss: () -> Unit,
     onParentSelected: (CategoryResponse) -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF0F111A)
+        containerColor = TransactionPalette.BackgroundAlt,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = { CategorySheetHandle() }
     ) {
-        Column(modifier = Modifier.padding(24.dp)) {
-            Text("Selecciona Una Categoría", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
-            Text("Seleccione la categoría principal para esta subcategoría", color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
-            
+        var categorySearchQuery by remember { mutableStateOf("") }
+        val filteredCategories = remember(categories, categorySearchQuery) {
+            val query = categorySearchQuery.trim()
+            if (query.isBlank()) {
+                categories
+            } else {
+                categories.filter { it.name.contains(query, ignoreCase = true) }
+            }
+        }
+        val movementCounts = remember(categoryTransactions, allCategories) {
+            allCategories.associate { category ->
+                category.id to countCategoryMovements(category, categoryTransactions, allCategories)
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 650.dp)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 18.dp)
+        ) {
+            Text(
+                text = "Selecciona una categoría",
+                color = TransactionPalette.TextPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Elige la categoría principal para esta subcategoría",
+                color = TransactionPalette.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            CategorySearchField(
+                value = categorySearchQuery,
+                onValueChange = { categorySearchQuery = it }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
             LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.heightIn(max = 400.dp).padding(top = 16.dp)
+                columns = GridCells.Adaptive(minSize = 96.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp, max = 440.dp)
             ) {
-                items(categories) { category ->
-                    CategoryGridItem(category, onClick = { onParentSelected(category) })
+                if (filteredCategories.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        EmptyCategorySearchState(hasQuery = categorySearchQuery.isNotBlank())
+                    }
+                }
+
+                items(filteredCategories, key = { it.id }) { category ->
+                    CategoryPickerGridCard(
+                        category = category,
+                        movementCount = movementCounts[category.id] ?: 0,
+                        isSelected = selectedCategoryId == category.id,
+                        onClick = { onParentSelected(category) },
+                        onLongClick = {}
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -1387,6 +1790,9 @@ fun ParentCategoryPickerDialog(
 fun SubcategoryPickerSheet(
     parentCategory: CategoryResponse,
     subcategories: List<CategoryResponse>,
+    allCategories: List<CategoryResponse>,
+    categoryTransactions: List<TransactionResponse>,
+    selectedCategoryId: Long?,
     onDismiss: () -> Unit,
     onSubcategorySelected: (Long) -> Unit,
     onAddSubcategory: () -> Unit,
@@ -1394,180 +1800,129 @@ fun SubcategoryPickerSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF0F111A)
+        containerColor = TransactionPalette.BackgroundAlt,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = { CategorySheetHandle() }
     ) {
+        var categorySearchQuery by remember { mutableStateOf("") }
+        val filteredSubcategories = remember(subcategories, categorySearchQuery) {
+            val query = categorySearchQuery.trim()
+            if (query.isBlank()) {
+                subcategories
+            } else {
+                subcategories.filter { it.name.contains(query, ignoreCase = true) }
+            }
+        }
+        val showParentCategory = categorySearchQuery.isBlank() || parentCategory.name.contains(categorySearchQuery.trim(), ignoreCase = true)
+        val movementCounts = remember(categoryTransactions, allCategories) {
+            allCategories.associate { category ->
+                category.id to countCategoryMovements(category, categoryTransactions, allCategories)
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
+                .heightIn(max = 650.dp)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 18.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "Seleccionar Subcategoría",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Selecciona una categoría",
+                        color = TransactionPalette.TextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Elige una subcategoría de ${parentCategory.name} o usa la categoría principal",
+                        color = TransactionPalette.TextSecondary,
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Surface(
                     onClick = onEditParent,
-                    color = Color(0xFF2C313F),
+                    color = TransactionPalette.ElevatedCard,
                     shape = CircleShape,
-                    modifier = Modifier.size(40.dp)
+                    border = BorderStroke(1.dp, TransactionPalette.Lavender.copy(alpha = 0.36f)),
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Edit, contentDescription = "Editar", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "Editar categoría principal",
+                            tint = TransactionPalette.Lavender,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(bottom = 16.dp)
-            ) {
-                // "Ninguno" Item
-                item {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { onSubcategorySelected(parentCategory.id) }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .background(Color(0xFF2C313F), RoundedCornerShape(16.dp))
-                                .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Clear, contentDescription = null, tint = Color.Red, modifier = Modifier.size(32.dp))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Ninguno", color = Color.White, fontSize = 12.sp)
-                    }
-                }
-
-                // Subcategories
-                items(subcategories) { sub ->
-                    val subColor = try {
-                        Color(android.graphics.Color.parseColor(sub.color ?: "#7E57C2"))
-                    } catch (e: Exception) {
-                        Color(0xFF7E57C2)
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { onSubcategorySelected(sub.id) }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .background(subColor, RoundedCornerShape(16.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(getEmojiForCategory(sub.name, sub.icon), fontSize = 32.sp)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(sub.name, color = Color.White, fontSize = 12.sp)
-                    }
-                }
-
-                // "+" Add Button
-                item {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { onAddSubcategory() }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .background(Color.Transparent, RoundedCornerShape(16.dp))
-                                .border(1.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, tint = Color.Gray)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-    }
-}
-
-@Composable
-fun CategoryGridItem(category: CategoryResponse, onClick: () -> Unit) {
-    val categoryColor = try {
-        Color(android.graphics.Color.parseColor(category.color ?: "#7E57C2"))
-    } catch (e: Exception) {
-        Color(0xFF7E57C2)
-    }
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }
-    ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .background(categoryColor, RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(getEmojiForCategory(category.name, category.icon), fontSize = 32.sp)
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(category.name, color = Color.White, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 1)
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun CategoryIconItem(
-    category: CategoryResponse,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    val categoryColor = try {
-        Color(android.graphics.Color.parseColor(category.color ?: "#7E57C2"))
-    } catch (e: Exception) {
-        Color(0xFF7E57C2)
-    }
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
+            CategorySearchField(
+                value = categorySearchQuery,
+                onValueChange = { categorySearchQuery = it }
             )
-            .padding(4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .background(
-                    categoryColor.copy(alpha = if (isSelected) 1f else 0.8f),
-                    RoundedCornerShape(16.dp)
-                )
-                .then(
-                    if (isSelected) Modifier.background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(16.dp)) else Modifier
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(getEmojiForCategory(category.name, category.icon), fontSize = 28.sp)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 96.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp, max = 440.dp)
+            ) {
+                if (!showParentCategory && filteredSubcategories.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        EmptyCategorySearchState(hasQuery = categorySearchQuery.isNotBlank())
+                    }
+                }
+
+                if (showParentCategory) {
+                    item(key = "parent-${parentCategory.id}") {
+                        CategoryPickerGridCard(
+                            category = parentCategory,
+                            movementCount = movementCounts[parentCategory.id] ?: 0,
+                            isSelected = selectedCategoryId == parentCategory.id,
+                            onClick = { onSubcategorySelected(parentCategory.id) },
+                            onLongClick = onEditParent
+                        )
+                    }
+                }
+
+                items(filteredSubcategories, key = { it.id }) { subcategory ->
+                    CategoryPickerGridCard(
+                        category = subcategory,
+                        movementCount = movementCounts[subcategory.id] ?: 0,
+                        isSelected = selectedCategoryId == subcategory.id,
+                        onClick = { onSubcategorySelected(subcategory.id) },
+                        onLongClick = {}
+                    )
+                }
+
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    AddCategoryPickerCard(
+                        title = "Nueva subcategoría",
+                        subtitle = "Crea una subcategoría personalizada",
+                        onClick = onAddSubcategory
+                    )
+                }
+            }
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = category.name,
-            color = Color.White,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
     }
 }
+

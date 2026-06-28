@@ -31,6 +31,10 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import ni.edu.uam.raccooncash.ui.accounts.accountColors
 import ni.edu.uam.raccooncash.ui.components.EmojiPickerDialog
+import ni.edu.uam.raccooncash.util.formatCurrencyAmount
+import ni.edu.uam.raccooncash.util.formatEditableMoney
+import ni.edu.uam.raccooncash.util.isPotentialMoneyInput
+import ni.edu.uam.raccooncash.util.parseMoneyInput
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,7 +45,7 @@ fun AddSavingGoalScreen(
 ) {
     val context = LocalContext.current
     var name by remember { mutableStateOf(goalToEdit?.name ?: "") }
-    var targetAmount by remember { mutableStateOf(goalToEdit?.targetAmount?.toString() ?: "") }
+    var targetAmount by remember { mutableStateOf(formatEditableMoney(goalToEdit?.targetAmount)) }
     
     val initialColor = if (goalToEdit != null) {
         try { Color(android.graphics.Color.parseColor(goalToEdit.color)) } catch (e: Exception) { accountColors[0] }
@@ -60,6 +64,8 @@ fun AddSavingGoalScreen(
     
     val success by viewModel.addGoalSuccess.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val targetAmountValue = parseMoneyInput(targetAmount)
+    val canSave = name.isNotBlank() && targetAmountValue != null && targetAmountValue > 0.0 && !isLoading
     
     val datePickerDialog = DatePickerDialog(
         context,
@@ -130,17 +136,17 @@ fun AddSavingGoalScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(80.dp),
-                color = Color(0xFFD1C4E9),
+                color = if (canSave) Color(0xFFD1C4E9) else Color.Gray.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 onClick = {
-                    if (name.isNotEmpty() && targetAmount.isNotEmpty() && !isLoading) {
+                    if (canSave) {
                         val argb = selectedColor.toArgb()
                         val colorHex = String.format("#%06X", 0xFFFFFF and argb)
                         if (goalToEdit != null) {
                             viewModel.updateSavingGoal(
                                 id = goalToEdit.id,
                                 name = name,
-                                targetAmount = targetAmount.toDoubleOrNull() ?: 0.0,
+                                targetAmount = targetAmountValue ?: 0.0,
                                 deadline = deadline.format(DateTimeFormatter.ISO_LOCAL_DATE),
                                 color = colorHex,
                                 icon = selectedEmoji
@@ -148,7 +154,7 @@ fun AddSavingGoalScreen(
                         } else {
                             viewModel.addSavingGoal(
                                 name = name,
-                                targetAmount = targetAmount.toDoubleOrNull() ?: 0.0,
+                                targetAmount = targetAmountValue ?: 0.0,
                                 deadline = deadline.format(DateTimeFormatter.ISO_LOCAL_DATE),
                                 color = colorHex,
                                 icon = selectedEmoji
@@ -162,8 +168,8 @@ fun AddSavingGoalScreen(
                         CircularProgressIndicator(color = Color.Black)
                     } else {
                         Text(
-                            if (name.isEmpty()) "Asignar nombre" else if (goalToEdit != null) "Guardar cambios" else "Guardar meta",
-                            color = Color.Black,
+                            if (name.isEmpty()) "Asignar nombre" else if (targetAmountValue == null) "Completa el monto" else if (goalToEdit != null) "Guardar cambios" else "Guardar meta",
+                            color = if (canSave) Color.Black else Color.White.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
@@ -293,6 +299,9 @@ fun AddSavingGoalScreen(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    val targetAmountPreview = targetAmountValue?.let { formatCurrencyAmount(it) }
+                        ?: if (targetAmount.isEmpty()) formatCurrencyAmount(0.0) else "C${'$'}$targetAmount"
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
@@ -300,7 +309,7 @@ fun AddSavingGoalScreen(
                         Text("Objetivo", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Color.White)
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            "C$${if (targetAmount.isEmpty()) "0" else targetAmount}",
+                            targetAmountPreview,
                             fontWeight = FontWeight.Bold,
                             fontSize = 32.sp,
                             color = Color.Gray
@@ -308,7 +317,7 @@ fun AddSavingGoalScreen(
                         // Input invisible mapping to text for style
                         TextField(
                             value = targetAmount,
-                            onValueChange = { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) targetAmount = it },
+                            onValueChange = { if (isPotentialMoneyInput(it)) targetAmount = it },
                             modifier = Modifier.width(1.dp).height(1.dp),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             colors = TextFieldDefaults.colors(
